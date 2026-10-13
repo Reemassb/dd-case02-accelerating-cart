@@ -425,21 +425,7 @@ const LAB = {
       ["Explains why that leads to the verdict", /(so |therefore|because|thus|this means)/.test(t)]];
   },
 
-  /* Teacher edition text */
-  teacherNote: "Expected a uses a least-squares fit with the anomaly re-run. Δa comes from the steepest and shallowest lines that pass through every error bar, so accept student a within about ±5 % and Δa within a factor of about 1.5. Intercept key: <b>origin</b> = cart started from rest as the timer started, <b>moving</b> = v<sub>i</sub> is not zero (cart already moving when timing began: delayed timer start or an initial push), <b>either</b> = borderline, accept a justified answer.",
-  interceptKeyLabel(a){ return a.length === 2 ? "either" : a[0] === "origin" ? "origin" : "moving"; },
-  teacherFixed: [
-    "Check-in: an acceleration of 0.5 m/s² means the velocity increases by 0.5 m/s every second.",
-    "Independent variable: the time from the start-gate trigger (set by moving the photogate). Control variables: the same cart, load and fan setting.",
-    "Axes: velocity v on the vertical axis, time t on the horizontal axis. Gradient = a, intercept = v<sub>i</sub>.",
-    "Pattern: straight-line trend (constant acceleration).",
-    "Anomaly reason: lies further from the trend than its ±4 cm/s error bar allows. Either action (repeat the run or exclude with a record) is accepted.",
-    "Gradient unit: cm/s². Convert to m/s² by ÷ 100.",
-    "Largest percentage uncertainty: trial 1 (the smallest velocity).",
-    "IB HL extension: Δc = |c(steepest) − c(shallowest)| ÷ 2; zero inside c ± Δc means no evidence the cart was moving when timing began; t₀ = −c ÷ gradient is the extrapolated time of zero velocity, relative to the timer's zero (negative = before the timer read 0, from a delayed start or an initial push). A nonzero v<sub>i</sub> shifts the line but leaves a unchanged. Students' Δc depends on their own lines, so the table's Δc is a guide.",
-    "Verdict: “meets” if the catalog value lies inside the team's own range a ± Δa. This is the activity's uncertainty criterion, not a full industrial quality-control test. The app checks this against each team's own numbers."
-  ],
-  genCols: [["Generator a", "m/s²", d => (d.a / 100).toFixed(3)], ["Generator v<sub>i</sub>", "cm/s", d => d.vi.toFixed(1)]]
+  
 };
 /* ===================================================================== */
 
@@ -949,6 +935,13 @@ function stUnc(S){
     const sM = lineOf(mx).m * conv, sm = lineOf(mn).m * conv, kb = lineOf(best).m * conv;
     if (sM <= kb){ ok = false; msgs.push("Your steepest line must be steeper than your best-fit line."); }
     if (sm >= kb){ ok = false; msgs.push("Your shallowest line must be shallower than your best-fit line."); }
+    { // limiting lines must be close to the real extremes, or ΔR (and the verdict) would be too optimistic
+      const ex = extremeSlopes(pts), eM = ex.max * conv, em = ex.min * conv, full = eM - em, need = (LAB.tol.spreadMin ?? 0.7);
+      if (!a.length && !b.length && sM > kb && sm < kb && full > 0 && (sM - sm) < need * full){ ok = false;
+        if (eM - sM > 0.15 * full) msgs.push("Steepest line: an even steeper line still passes through every error bar. Tilt it further until it only just touches the bars.");
+        if (sm - em > 0.15 * full) msgs.push("Shallowest line: an even shallower line still passes through every error bar. Tilt it further until it only just touches the bars.");
+        msgs.push(`Your lines give too small an uncertainty. They should be the steepest and shallowest lines the error bars allow, so that Δ${f} is not underestimated.`); }
+    }
     const kM = num(st.a.kmax), km = num(st.a.kmin), dk = num(st.a.dk);
     if (!near(kM, sM, 0.03)){ ok = false; msgs.push(`${f}<sub>max</sub>: find the steepest line's gradient in ${LAB.slopeUnit}, then convert to ${u} (${LAB.convHint}).`); }
     if (!near(km, sm, 0.03)){ ok = false; msgs.push(`${f}<sub>min</sub>: find the shallowest line's gradient in ${LAB.slopeUnit}, then convert to ${u} (${LAB.convHint}).`); }
@@ -995,6 +988,7 @@ function stCer(S){
     <div class="panel">${mcqHTML("verdict", `Verdict: within your uncertainty, does it meet the ${w}'s specification?`, [["meets",`Yes: the ${w} value lies inside our uncertainty range`],["fails",`No: the ${w} value lies outside our uncertainty range`]])}</div>
     ${parts.map(([k, t]) => `<div class="panel"><div class="inline" style="justify-content:space-between"><label class="lbl" for="c_${k}" style="font-size:1rem;font-family:var(--f-display)">${t}</label><span class="wc" id="w_${k}"></span></div>
       <div class="starter">${ST[k]}</div><textarea id="c_${k}" data-a="c_${k}"></textarea><ul class="checklist" id="l_${k}"></ul></div>`).join("")}
+    <p class="hint" style="font-size:.84rem;color:var(--muted)">The checklists only look for complete parts: a verdict, numbers, units, a link to the physics. They can't tell whether your science is right. Your teacher marks that.</p>
     <div class="actions"><button class="btn" type="button" id="chk">Submit conclusion</button>${nextBtn(i)}</div><div class="fb" id="f"></div>`;
   bindMcq(S); bindInputs(S); bindNext(S, i);
   const upd = k => { const t = st.a["c_" + k] || ""; const wc = t.trim() ? t.trim().split(/\s+/).length : 0; $("#w_" + k).textContent = `${wc} words`;
@@ -1007,7 +1001,7 @@ function stCer(S){
     else if ((st.a.verdict === "meets") !== inside){ ok = false; msgs.push(`Verdict: compare ${specTxt()} with your range of ${fFinal(fk - fdk)} to ${fFinal(fk + fdk)} ${u}. Is it inside or outside?`); }
     parts.forEach(([k, t]) => { const wc = (st.a["c_" + k] || "").trim().split(/\s+/).filter(Boolean).length; if (wc < 12){ ok = false; msgs.push(`${t}: write at least 12 words (you have ${wc}).`); } });
     if (ok){ const miss = parts.flatMap(([k]) => LAB.cerChecks(st.a["c_" + k] || "", k).filter(c => !c[1]).map(c => c[0]));
-      fb($("#f"), "ok", ["<strong>Case closed.</strong> Your report is ready on the next stage.", miss.length ? `Before you print, consider adding: ${miss.join("; ").toLowerCase()}.` : "Your conclusion covers every point on the checklists."]); complete(S, i); }
+      fb($("#f"), "ok", ["<strong>Case closed.</strong> Your report is ready on the next stage.", miss.length ? `Before you print, consider adding: ${miss.join("; ").toLowerCase()}.` : "Your conclusion covers every point on the checklists. That means it is complete; your teacher will judge the science."]); complete(S, i); }
     else fb($("#f"), "bad", msgs);
   };
 }
